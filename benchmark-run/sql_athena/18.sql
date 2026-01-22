@@ -6,16 +6,16 @@ select
     o_totalprice,
     sum(l_quantity)
 from
-    lineitem_19,
+    :lineitem,
     (select * from
-                  customer_19,
-                  orders_19
+                  :customer,
+                  :orders
      where
              o_orderkey in (
              select
                  l_orderkey
              from
-                 lineitem_19
+                 :lineitem
              group by
                  l_orderkey having
                      sum(l_quantity) > :1

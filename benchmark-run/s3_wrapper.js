@@ -1,19 +1,22 @@
 import AWS from 'aws-sdk';
 import fs from 'fs';
 
+// connection credentials for S3 and bucket
 const connection_options = {
-   accessKeyId: process.env.S3_ACCESS_KEY || null,
-   secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || null,
+   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY 
 };
-const bucket = process.env.S3_BUCKET || null;
+const bucket = process.env.S3_BUCKET;
 
 export default class S3Wrapper {
    constructor() {
+    // check if connection options are defined
       if (Object.keys(connection_options).some(key => connection_options[key] == null)) {
          console.log("connection_options: " + JSON.stringify(connection_options, null, 2));
          console.log("Please define all these options :)");
          process.exit(-1);
       }
+    // check if S3 bucket is defined
       if (bucket == null) {
          console.log("s3 bucket is not specified, please set S3_BUCKET in environment.");
          process.exit(-1);
@@ -24,7 +27,7 @@ export default class S3Wrapper {
       this.bucket = bucket;
       console.log("done")
    }
-
+   // helper functions
    _GetS3Path(database_id, table_name, step) {
       return "csv/database_" + database_id + "/" + table_name + "_" + step + "/";
    }
@@ -41,6 +44,7 @@ export default class S3Wrapper {
       return "'s3://" + this.bucket + "/" + this._GetS3Path(database_id, table_name, step) + "'";
    }
 
+   
    async put(key, file) {
       const file_content = fs.readFileSync(file);
 

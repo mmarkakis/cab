@@ -8,6 +8,7 @@
     "chalk": "^5.0.1",
     "n-readlines": "^1.0.1",
     "parquets": "^0.10.10",
+    "pg": "^8.10.0",
     "relaxed-json": "^1.0.3",
     "semaphore-async-await": "^1.5.1",
     "snowflake-sdk": "^1.6.7",

@@ -3,9 +3,9 @@ import AthenaExpress from "athena-express";
 import {Semaphore} from 'async-mutex';
 
 const connection_options = {
-   region: "eu-central-1",
-   accessKeyId: process.env.S3_ACCESS_KEY,
-   secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+   region: process.env.AWS_REGION,
+   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
 };
 
 export default class AthenaPool {
@@ -25,8 +25,8 @@ export default class AthenaPool {
 
       const express_athena_options = {
          aws: AWS, // required
-         s3: "s3://[TODO: specify respective s3 bucket]", // optional
-         db: process.env.DATABASE, // optional
+         s3: process.env.ATHENA_S3_OUTPUT, // required - S3 bucket for Athena query results
+         db: process.env.ATHENA_DATABASE, // required - Athena database name
          // workgroup: "myWorkGroupName", // optional
          formatJson: true, // optional
          retry: 0, // optional
@@ -55,8 +55,10 @@ export default class AthenaPool {
          }
 
          if (typeof (binds[i]) === "number") {
+            // result = result.replaceAll("?" + (i + 1), binds[i]);
             result = result.replaceAll(":" + (i + 1), binds[i]);
          } else if (typeof (binds[i]) === "string") {
+            // result = result.replaceAll("?" + (i + 1), "'" + binds[i] + "'");
             result = result.replaceAll(":" + (i + 1), "'" + binds[i] + "'");
          } else {
             throw new Error("unknown type for binding");

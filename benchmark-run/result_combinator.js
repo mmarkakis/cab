@@ -11,7 +11,7 @@ class QueryStreamAnalyzer {
       let i = 0;
       while (true) {
          try {
-            const data = fs.readFileSync("../results/big_query_1h_1tb/executor_" + i + ".log").toString();
+            const data = fs.readFileSync("results_2_no23/" + i + "_1TB_N2.csv").toString();
             this.query_streams.push(data);
             i++;
          } catch (e) { break; }
