@@ -28,7 +28,8 @@ These are the ones we used in the experiments in the paper.
 Contains the results we obtained by running the experiments as described in the paper.
 
 ### ``cab/benchmark-run``
-A set of java script programs for running and analyzing the benchmark results.
+A set of JavaScript programs for running and analyzing the benchmark results.
+See [benchmark-run/README.md](benchmark-run/README.md) for setup instructions and required environment variables for Redshift and Athena.
 
 ### ``cab/snowset-analysis``
 All R scripts we used to analyze the snowset and to plot the results of the benchmark run.

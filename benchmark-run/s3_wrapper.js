@@ -1,11 +1,12 @@
 import AWS from 'aws-sdk';
 import fs from 'fs';
 
+// connection credentials for S3 and bucket
 const connection_options = {
-   accessKeyId: process.env.S3_ACCESS_KEY || null,
-   secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || null,
+   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY 
 };
-const bucket = process.env.S3_BUCKET || null;
+const bucket = process.env.S3_BUCKET;
 
 export default class S3Wrapper {
    constructor() {
@@ -24,7 +25,6 @@ export default class S3Wrapper {
       this.bucket = bucket;
       console.log("done")
    }
-
    _GetS3Path(database_id, table_name, step) {
       return "csv/database_" + database_id + "/" + table_name + "_" + step + "/";
    }

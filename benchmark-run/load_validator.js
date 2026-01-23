@@ -1,8 +1,10 @@
 import SnowflakePool from './snowflake_pool.js';
 import AthenaPool from './athena_pool.js';
 import BigQueryPool from './bigquery_pool.js';
+import RedshiftPool from './redshift_pool.js';
 import Common from './common.js';
 import chalk from 'chalk';
+import { BigQuery } from '@google-cloud/bigquery';
 
 const pool_concurrency = 1;
 

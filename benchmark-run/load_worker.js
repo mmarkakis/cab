@@ -1,6 +1,7 @@
 import SnowflakePool from './snowflake_pool.js';
 import AthenaPool from './athena_pool.js';
 import BigQueryPool from "./bigquery_pool.js";
+import RedshiftPool from "./redshift_pool.js";
 import S3Wrapper from './s3_wrapper.js';
 import Common from './common.js';
 import fs from "fs";
@@ -16,10 +17,11 @@ const csv_directory = "gen_" + process.pid;
 class LoadWorker {
    constructor() {
       this.databases = [];
-      this.snowflake = new SnowflakePool(pool_concurrency, false);
+      // this.snowflake = new SnowflakePool(pool_concurrency, false);
       // this.athena = new AthenaPool(pool_concurrency, false);
-      this.big_query_pool = new BigQueryPool(pool_concurrency, false);
-      // this.s3_wrapper = new S3Wrapper();
+      this.redshift = new RedshiftPool(pool_concurrency, false)
+      // this.big_query_pool = new BigQueryPool(pool_concurrency, false);
+      this.s3_wrapper = new S3Wrapper();
       this.stats = {
          compress_total: 0,
          dbgen_total: 0,
@@ -27,6 +29,7 @@ class LoadWorker {
          copy_athena_total: 0,
          copy_snowflake_total: 0,
          copy_bigquery_total: 0,
+         copy_redshift_total: 0,
          pipelined_upload_total: 0,
          compress: [],
          dbgen: [],
@@ -34,6 +37,7 @@ class LoadWorker {
          copy_athena: [],
          copy_snowflake: [],
          copy_bigquery: [],
+         copy_redshift: [],
          pipelined_upload: [],
       };
    }
@@ -52,6 +56,25 @@ class LoadWorker {
          const updated_rows = update_res.rows[0]['number of rows updated'];
          if (updated_rows != null && updated_rows === 1) {
             console.log(job);
+            return job;
+         }
+      }
+   }
+
+   async GetNextJobRedshift() {
+      console.log(chalk.cyan("\nGetting next job ..."));
+      while (true) {
+         const jobs = await this.redshift.RunSync("select * from jobs where status = 'open' limit 1 ");
+         if (jobs.rows.length === 0) {
+            console.log("No more open jobs -> done");
+            return null
+         }
+         const job = jobs.rows[0];
+
+         // const update_res = await this.redshift.RunSync("update jobs set status = 'running' where job_id = ? and status = 'open'", [job.JOB_ID]);
+         const update_res = await this.redshift.RunSync("update jobs set status = 'running' where job_id = $1 and status = 'open'", [job.job_id]);
+         const updated_rows = update_res.affectedRows;
+         if (updated_rows != null && updated_rows === 1) {
             return job;
          }
       }
@@ -240,6 +263,27 @@ class LoadWorker {
       this.stats.copy_athena.push(Date.now() - start);
    }
 
+   async CopyIntoTableRedshift(job) {
+
+      const start = Date.now();
+      const options = "ZSTD DELIMITER '|'";
+      // const s3_options = "CREDENTIALS" + process.env.REDSHIFT_ROLE + "";
+      const s3_options = "CREDENTIALS 'aws_iam_role=arn:aws:iam::962670871107:role/redshift-s3-access'"
+      const table_db_id = job.TABLE_NAME + "_" + job.DATABASE_ID;
+      const file_name = this.s3_wrapper._GetS3AccessPath(job.DATABASE_ID, job.TABLE_NAME, job.STEP);
+      const command = "COPY " + table_db_id + " FROM " + file_name + " " + s3_options + " " + options + ";";
+      console.log(chalk.cyan("\nCopy into Redshift table ..."));
+      console.log(command);
+      const res = await this.redshift.RunSync(command);
+      console.log(res.rows);
+      // if (res.rows[0].errors_seen !== 0) {
+      //    console.log(chalk.red("error while copying rows"));
+      //    process.exit();
+      // }
+      this.stats.copy_redshift_total += (Date.now() - start);
+      this.stats.copy_redshift.push({time: Date.now() - start, TABLE_NAME: job.TABLE_NAME});
+   }
+
    async CopyIntoTableBigQuery(job) {
       // Imports a local file into a table.
       const table_db_id = job.TABLE_NAME + "_" + job.DATABASE_ID;
@@ -267,6 +311,16 @@ class LoadWorker {
       console.log("done");
    }
 
+   async MarkJobAsDoneRedshift(job) {
+      console.log(chalk.cyan("\nMarking job as complete ..."));
+      const res = await this.redshift.RunSync("update jobs set status = 'complete' where job_id = $1 and status = 'running'", [job.job_id]);
+      // if (res.rows.length !== 1 || res.rows[0]['number of rows updated'] !== 1) {
+      if (res.affectedRows !==1) {
+         throw new Error("Unexpected result on job completion: " + JSON.stringify(res));
+      }
+      console.log("done");
+   }
+
    async CleanTmpFiles(job) {
       fs.rmSync(csv_directory, {recursive: true, force: true});
    }
@@ -280,9 +334,11 @@ async function main() {
       await worker.CreateCsvFile(job);
       // await worker.CompressCsvFile(job);
       // await worker.UploadCsvFileS3(job);
+
       // await worker.CopyIntoTableSnowflake(job);
       // await worker.CopyIntoTableAthena(job);
       await worker.CopyIntoTableBigQuery(job);
+      // await worker.CopyIntoTableRedshift(job);
       await worker.MarkJobAsDone(job);
       await worker.CleanTmpFiles(job);
    }
