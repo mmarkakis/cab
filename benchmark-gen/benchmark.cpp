@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <cassert>
 #include <cmath>
+#include <functional>
 
 using namespace std;
 
@@ -440,11 +441,11 @@ struct Vector {
 };
 
 struct Generator {
-   static uint64_t GetSeedForDatabaseCount() { return 6; }
-   static uint64_t GetSeedForQueryCount() { return 28; }
-   static uint64_t GetSeedForPatterns() { return 496; }
-   static uint64_t GetSeedForQueries() { return 8128; }
-   static uint64_t GetSeedForQueryArguments() { return 33550336; }
+   static uint64_t GetSeedForDatabaseCount(uint64_t seed_multiplier) { return 6 * seed_multiplier; }
+   static uint64_t GetSeedForQueryCount(uint64_t seed_multiplier) { return 28 * seed_multiplier; }
+   static uint64_t GetSeedForPatterns(uint64_t seed_multiplier) { return 496 * seed_multiplier; }
+   static uint64_t GetSeedForQueries(uint64_t seed_multiplier) { return 8128 * seed_multiplier; }
+   static uint64_t GetSeedForQueryArguments(uint64_t seed_multiplier) { return 33550336 * seed_multiplier; }
 
    vector<Database> databases;
 
@@ -454,7 +455,7 @@ struct Generator {
       return scale_factor == 0 ? 1 : scale_factor;
    }
 
-   void GenerateDatabases(uint64_t database_count, uint64_t total_size)
+   void GenerateDatabases(uint64_t database_count, uint64_t total_size, uint64_t seed_multiplier)
    {
       vector<double> db_sizes;
 
@@ -462,7 +463,7 @@ struct Generator {
       double mean = 24.66794;
       double sd = 2.575434;
       while (true) {
-         db_sizes = Utility::GenerateDeterministicLogNormal(database_count, mean, sd, 0, GetSeedForDatabaseCount());
+         db_sizes = Utility::GenerateDeterministicLogNormal(database_count, mean, sd, 0, GetSeedForDatabaseCount(seed_multiplier));
          double sum = 0;
          for (auto iter : db_sizes) {
             sum += SizeToScaleFactor(iter) * 1e9;
@@ -531,9 +532,9 @@ struct Generator {
       }
    }
 
-   void GenerateCpuTimeForDatabases(uint64_t total_cpu_hours)
+   void GenerateCpuTimeForDatabases(uint64_t total_cpu_hours, uint64_t seed_multiplier)
    {
-      mt19937 gen(GetSeedForQueryCount());
+      mt19937 gen(GetSeedForQueryCount(seed_multiplier));
       uint64_t actual_cpu_time = 0;
       for (auto &database : databases) {
          // database.query_count = RollQueryCount(database, gen); // Not needed because we just use the cpu time to generate queries
@@ -548,9 +549,9 @@ struct Generator {
    }
 
    // Each query has 100 time slots. This method assigns a query count to each time slot.
-   void GenerateQueryArrivalDistribution()
+   void GenerateQueryArrivalDistribution(uint64_t seed_multiplier)
    {
-      mt19937 gen(GetSeedForPatterns());
+      mt19937 gen(GetSeedForPatterns(seed_multiplier));
       uniform_real_distribution<double> rdist(0.0, 1.0);
 
       // Define different query arrival patterns throughout the time
@@ -703,9 +704,9 @@ struct Generator {
    }
 
    // Generates queries for each time slot using the exponential distribution.
-   void GenerateQueryArrivalTimes(uint64_t total_duration_in_hours)
+   void GenerateQueryArrivalTimes(uint64_t total_duration_in_hours, uint64_t seed_multiplier)
    {
-      mt19937 gen(GetSeedForQueries());
+      mt19937 gen(GetSeedForQueries(seed_multiplier));
 
       for (auto &database: databases) {
          // Distribute the cpu time over slots
@@ -750,9 +751,9 @@ struct Generator {
       }
    }
 
-   void GenerateQueryArguments()
+   void GenerateQueryArguments(uint64_t seed_multiplier)
    {
-      mt19937 gen(GetSeedForQueryArguments());
+      mt19937 gen(GetSeedForQueryArguments(seed_multiplier));
 
       for (auto &database: databases) {
          TpchQueries::UpdateState update_state(1000);
@@ -818,22 +819,37 @@ struct Generator {
 // clang++ -std=c++17 -Wall -Werror=return-type -Werror=non-virtual-dtor -Werror=sequence-point -Wsign-compare -march=native -O2 -Wfatal-errors benchmark.cpp
 int main(int argc, char **argv)
 {
-   const uint64_t total_size = 4_TB;
-   const uint64_t total_cpu_hours = 40;
-   const uint64_t total_duration_in_hours = 1;
-   const uint64_t database_count = 20;
+   // Optionally, the CAB_factor, the total workload duration in hours, and the seed multiplier can be provided as command line arguments.
+   uint64_t cab_factor = 1;
+   uint64_t total_duration_in_hours = 1;
+   uint64_t seed_multiplier = 1;
+   if (argc > 1) {
+      cab_factor = std::max<uint64_t>(1, std::stoull(argv[1]));
+   }
+   if (argc > 2) {
+      total_duration_in_hours = std::max<uint64_t>(1, std::stoull(argv[2]));
+   }
+   if (argc > 3) {
+      seed_multiplier = std::max<uint64_t>(1, std::stoull(argv[3]));
+   }
+
+
+   const uint64_t total_size = cab_factor * 1_TB;
+   const uint64_t total_cpu_hours = cab_factor * 10;
+   const uint64_t database_count = (cab_factor == 1) ? 20 : 100;
+
 
    Generator generator;
-   generator.GenerateDatabases(database_count, total_size);
-   generator.GenerateCpuTimeForDatabases(total_cpu_hours);
+   generator.GenerateDatabases(database_count, total_size, seed_multiplier);
+   generator.GenerateCpuTimeForDatabases(total_cpu_hours, seed_multiplier);
    //   generator.GenerateFixedDatabases(database_count, 10, 5);
-   generator.GenerateQueryArrivalDistribution();
-   generator.GenerateQueryArrivalTimes(total_duration_in_hours);
+   generator.GenerateQueryArrivalDistribution(seed_multiplier);
+   generator.GenerateQueryArrivalTimes(total_duration_in_hours, seed_multiplier);
 
    generator.DumpDatabaseCpuTimesForR();
    generator.DumpDatabaseSizeBucketsForR();
 
-   generator.GenerateQueryArguments();
+   generator.GenerateQueryArguments(seed_multiplier);
    for (uint32_t i = 0; i<generator.databases.size(); i++) {
       ofstream os("query_streams/query_stream_" + to_string(i) + ".json");
       generator.databases[i].WriteJson(os);
