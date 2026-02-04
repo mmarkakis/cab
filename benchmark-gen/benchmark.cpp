@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cmath>
 #include <functional>
+#include <filesystem>
 
 using namespace std;
 
@@ -816,6 +817,20 @@ struct Generator {
    }
 };
 
+int DeleteOldStreams()
+{
+   uint8_t count = 0;
+   for (const auto& entry : std::filesystem::directory_iterator("query_streams")) {
+      if (entry.is_regular_file() && entry.path().extension() == ".json") {
+         std::filesystem::remove(entry.path());
+         count++;
+      }
+   }
+   std::cout << "Deleted " << static_cast<int>(count) << " old files." << std::endl;
+
+   return 0;
+}
+
 // clang++ -std=c++17 -Wall -Werror=return-type -Werror=non-virtual-dtor -Werror=sequence-point -Wsign-compare -march=native -O2 -Wfatal-errors benchmark.cpp
 int main(int argc, char **argv)
 {
@@ -838,6 +853,18 @@ int main(int argc, char **argv)
    const uint64_t total_cpu_hours = cab_factor * 10;
    const uint64_t database_count = (cab_factor == 1) ? 20 : 100;
 
+   DeleteOldStreams();
+   {
+      ofstream os("query_streams/generation_parameters.json");
+      os << "{" << endl;
+      os << R"(  "cab_factor": )" << cab_factor << "," << endl;
+      os << R"(  "total_duration_in_hours": )" << total_duration_in_hours << "," << endl;
+      os << R"(  "seed_multiplier": )" << seed_multiplier << "," << endl;
+      os << R"(  "total_size_tb": )" << (total_size / 1_TB) << "," << endl;
+      os << R"(  "total_cpu_hours": )" << total_cpu_hours << "," << endl;
+      os << R"(  "database_count": )" << database_count << endl;
+      os << "}" << endl;
+   }
 
    Generator generator;
    generator.GenerateDatabases(database_count, total_size, seed_multiplier);
